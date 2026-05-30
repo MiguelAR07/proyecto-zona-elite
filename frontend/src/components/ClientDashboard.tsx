@@ -99,6 +99,18 @@ const playCancelSound = () => {
   }
 };
 
+const formatTo12Hour = (timeStr: string) => {
+  if (!timeStr) return '';
+  const [hourStr, minuteStr] = timeStr.split(':');
+  let hour = parseInt(hourStr, 10);
+  const minutes = minuteStr ? minuteStr.substring(0, 2) : '00';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12;
+  hour = hour ? hour : 12;
+  const hourFormatted = hour < 10 ? `0${hour}` : `${hour}`;
+  return `${hourFormatted}:${minutes} ${ampm}`;
+};
+
 export function ClientDashboard({ onLogout, user }: any) {
   const [activeTab, setActiveTab] = useState<'reservar' | 'historial'>('reservar');
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
@@ -312,8 +324,8 @@ export function ClientDashboard({ onLogout, user }: any) {
                         <div key={`${block.date}_${block.start_time}`} className="border border-border rounded-xl overflow-hidden">
                           {/* Time header */}
                           <div className="bg-secondary/30 px-4 py-2 flex items-center justify-between">
-                            <span className="font-heading font-bold text-lg">{block.start_time.substring(0, 5)}</span>
-                            <span className="text-xs text-muted-foreground">→ {block.end_time.substring(0, 5)}</span>
+                            <span className="font-heading font-bold text-lg">{formatTo12Hour(block.start_time)}</span>
+                            <span className="text-xs text-muted-foreground">→ {formatTo12Hour(block.end_time)}</span>
                           </div>
 
                           {/* Modalities row */}
@@ -404,7 +416,7 @@ export function ClientDashboard({ onLogout, user }: any) {
                           <h4 className="font-heading font-bold uppercase text-sm">{res.modality}</h4>
                         </div>
                         <p className="text-muted-foreground text-sm flex items-center gap-1">
-                          <Clock size={12} /> {res.start_time.substring(0, 5)} HRS
+                          <Clock size={12} /> {formatTo12Hour(res.start_time)}
                         </p>
                       </div>
                     </div>
@@ -438,7 +450,7 @@ export function ClientDashboard({ onLogout, user }: any) {
                 <strong className="text-foreground">{bookingModal.label}</strong> para el{' '}
                 <strong className="text-foreground">{format(selectedDate, "d 'de' MMMM, yyyy", { locale: es })}</strong>{' '}
                 a las{' '}
-                <strong className="text-foreground">{bookingModal.slot.start_time.substring(0, 5)} hrs</strong>.
+                <strong className="text-foreground">{formatTo12Hour(bookingModal.slot.start_time)}</strong>.
               </p>
               <div className="flex gap-3">
                 <button

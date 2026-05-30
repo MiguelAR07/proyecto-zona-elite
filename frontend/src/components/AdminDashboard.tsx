@@ -120,6 +120,17 @@ const playCancelSound = () => {
   }
 };
 
+const formatTo12Hour = (timeStr: string) => {
+  if (!timeStr) return '';
+  const [hourStr, minuteStr] = timeStr.split(':');
+  let hour = parseInt(hourStr, 10);
+  const minutes = minuteStr ? minuteStr.substring(0, 2) : '00';
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12;
+  hour = hour ? hour : 12;
+  const hourFormatted = hour < 10 ? `0${hour}` : `${hour}`;
+  return `${hourFormatted}:${minutes} ${ampm}`;
+};
 
 export function AdminDashboard({ onLogout }: any) {
   const [slots, setSlots] = useState<any[]>([]);
@@ -334,7 +345,7 @@ export function AdminDashboard({ onLogout }: any) {
                         <li key={n.id} className={`p-3 text-sm ${!n.read ? 'bg-primary/5 font-semibold' : 'text-muted-foreground'}`}>
                           <p>{n.message}</p>
                           <div className="flex justify-between items-center mt-1 text-xs">
-                            <span className="opacity-50">{format(new Date(n.created_at), 'HH:mm - dd/MM/yy')}</span>
+                            <span className="opacity-50">{format(new Date(n.created_at), 'hh:mm a - dd/MM/yy')}</span>
                             {!n.read && (
                               <button onClick={() => handleMarkAsRead(n.id)} className="text-primary hover:underline">Marcar leída</button>
                             )}
@@ -419,7 +430,7 @@ export function AdminDashboard({ onLogout }: any) {
                     <React.Fragment key={blockKey}>
                       <tr className="hover:bg-secondary/20 transition-colors">
                         <td className="p-4 font-semibold">{format(new Date(block.date), 'dd MMM yyyy', { locale: es })}</td>
-                        <td className="p-4 font-heading font-bold text-lg">{block.start_time.substring(0, 5)}</td>
+                        <td className="p-4 font-heading font-bold text-lg">{formatTo12Hour(block.start_time)}</td>
                         <td className="p-4">
                           {getModalityLabel(block)}
                         </td>
@@ -589,7 +600,7 @@ export function AdminDashboard({ onLogout }: any) {
                 <p className="text-primary font-bold text-xs uppercase tracking-wider mb-1">Se crearán automáticamente</p>
                 <p className="font-semibold text-foreground">🏋️ Fuerza — 5 cupos &nbsp;+&nbsp; 🎯 Personalizado — 2 cupos</p>
                 <p className="text-muted-foreground text-xs mt-0.5">
-                  📅 {manualSlot.date || '—'} &nbsp;|&nbsp; ⏰ {manualSlot.start_time} → {manualSlot.end_time}
+                  📅 {manualSlot.date || '—'} &nbsp;|&nbsp; ⏰ {formatTo12Hour(manualSlot.start_time)} → {formatTo12Hour(manualSlot.end_time)}
                 </p>
               </div>
 
