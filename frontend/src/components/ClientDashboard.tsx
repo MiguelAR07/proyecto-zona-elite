@@ -103,7 +103,7 @@ export function ClientDashboard({ onLogout, user }: any) {
       await bookingsApi.create(bookingModal.slot.id);
       showToast('¡Reserva confirmada!');
       setBookingModal(null);
-      setActiveTab('historial');
+      await fetchSlots();
     } catch (error: any) {
       showToast(error.message || 'Error al realizar la reserva', 'error');
     } finally {
