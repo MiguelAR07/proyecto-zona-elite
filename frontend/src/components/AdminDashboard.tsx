@@ -68,7 +68,7 @@ const getModalityLabel = (block: any) => {
   return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
 };
 
-const playNotificationSound = () => {
+const playSuccessSound = () => {
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
@@ -80,15 +80,41 @@ const playNotificationSound = () => {
     oscillator.type = 'sine';
     const now = audioCtx.currentTime;
     
-    // Ding-dong double chime sound
-    oscillator.frequency.setValueAtTime(587.33, now); // D5
-    oscillator.frequency.setValueAtTime(698.46, now + 0.12); // F5
+    // Ascending high chime
+    oscillator.frequency.setValueAtTime(523.25, now); // C5
+    oscillator.frequency.setValueAtTime(659.25, now + 0.1); // E5
     
-    gainNode.gain.setValueAtTime(0.2, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    gainNode.gain.setValueAtTime(0.15, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
     
     oscillator.start(now);
-    oscillator.stop(now + 0.5);
+    oscillator.stop(now + 0.4);
+  } catch (error) {
+    console.warn('Audio playback blocked or failed:', error);
+  }
+};
+
+const playCancelSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.type = 'sine';
+    const now = audioCtx.currentTime;
+    
+    // Descending soft chime
+    oscillator.frequency.setValueAtTime(440.00, now); // A4
+    oscillator.frequency.setValueAtTime(349.23, now + 0.1); // F4
+    
+    gainNode.gain.setValueAtTime(0.15, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    
+    oscillator.start(now);
+    oscillator.stop(now + 0.4);
   } catch (error) {
     console.warn('Audio playback blocked or failed:', error);
   }
@@ -138,9 +164,9 @@ export function AdminDashboard({ onLogout }: any) {
       const response = await notificationsApi.getAll();
       const currentUnread = response.filter(n => !n.read).length;
 
-      // Play sound if a new notification arrived
+      // Play cancel sound if a new cancelation notification arrived
       if (prevUnreadCountRef.current !== null && currentUnread > prevUnreadCountRef.current) {
-        playNotificationSound();
+        playCancelSound();
       }
 
       prevUnreadCountRef.current = currentUnread;
@@ -182,6 +208,7 @@ export function AdminDashboard({ onLogout }: any) {
         try {
           if (fuerzaId) await slotsApi.delete(fuerzaId);
           if (personalizadoId) await slotsApi.delete(personalizadoId);
+          playCancelSound();
           showToast('¡Horario eliminado con éxito!');
           await fetchSlots();
         } catch (error: any) {
@@ -200,6 +227,7 @@ export function AdminDashboard({ onLogout }: any) {
         setConfirmModal(null);
         try {
           await bookingsApi.cancel(bookingId);
+          playCancelSound();
           showToast('¡Reserva cancelada con éxito!');
           await fetchSlots();
         } catch (error: any) {
@@ -227,6 +255,7 @@ export function AdminDashboard({ onLogout }: any) {
       });
 
       showToast('¡Horario creado con éxito!');
+      playSuccessSound();
       setShowManualModal(false);
       setManualSlot({
         date: new Date().toISOString().split('T')[0],

@@ -47,6 +47,58 @@ function groupSlotsByTime(slots: any[]) {
   );
 }
 
+const playSuccessSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.type = 'sine';
+    const now = audioCtx.currentTime;
+    
+    // Ascending high chime
+    oscillator.frequency.setValueAtTime(523.25, now); // C5
+    oscillator.frequency.setValueAtTime(659.25, now + 0.1); // E5
+    
+    gainNode.gain.setValueAtTime(0.15, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    
+    oscillator.start(now);
+    oscillator.stop(now + 0.4);
+  } catch (error) {
+    console.warn('Audio playback blocked or failed:', error);
+  }
+};
+
+const playCancelSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.type = 'sine';
+    const now = audioCtx.currentTime;
+    
+    // Descending soft chime
+    oscillator.frequency.setValueAtTime(440.00, now); // A4
+    oscillator.frequency.setValueAtTime(349.23, now + 0.1); // F4
+    
+    gainNode.gain.setValueAtTime(0.15, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    
+    oscillator.start(now);
+    oscillator.stop(now + 0.4);
+  } catch (error) {
+    console.warn('Audio playback blocked or failed:', error);
+  }
+};
+
 export function ClientDashboard({ onLogout, user }: any) {
   const [activeTab, setActiveTab] = useState<'reservar' | 'historial'>('reservar');
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
@@ -106,6 +158,7 @@ export function ClientDashboard({ onLogout, user }: any) {
     setIsBooking(true);
     try {
       await bookingsApi.create(bookingModal.slot.id);
+      playSuccessSound();
       showToast('¡Reserva confirmada!');
       setBookingModal(null);
       await fetchSlots();
@@ -124,6 +177,7 @@ export function ClientDashboard({ onLogout, user }: any) {
         setConfirmModal(null);
         try {
           await bookingsApi.cancel(id);
+          playCancelSound();
           showToast('¡Reserva cancelada con éxito!');
           await fetchReservations();
         } catch (error: any) {
