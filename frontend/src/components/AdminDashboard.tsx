@@ -68,6 +68,33 @@ const getModalityLabel = (block: any) => {
   return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
 };
 
+const playNotificationSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.type = 'sine';
+    const now = audioCtx.currentTime;
+    
+    // Ding-dong double chime sound
+    oscillator.frequency.setValueAtTime(587.33, now); // D5
+    oscillator.frequency.setValueAtTime(698.46, now + 0.12); // F5
+    
+    gainNode.gain.setValueAtTime(0.2, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+    
+    oscillator.start(now);
+    oscillator.stop(now + 0.5);
+  } catch (error) {
+    console.warn('Audio playback blocked or failed:', error);
+  }
+};
+
+
 export function AdminDashboard({ onLogout }: any) {
   const [slots, setSlots] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -92,8 +119,9 @@ export function AdminDashboard({ onLogout }: any) {
     setTimeout(() => setToast(null), 3000);
   };
 
-
   const notifRef = useRef<HTMLDivElement>(null);
+  const prevUnreadCountRef = useRef<number | null>(null);
+
 
 
   const fetchSlots = async () => {
@@ -108,6 +136,14 @@ export function AdminDashboard({ onLogout }: any) {
   const fetchNotifications = async () => {
     try {
       const response = await notificationsApi.getAll();
+      const currentUnread = response.filter(n => !n.read).length;
+
+      // Play sound if a new notification arrived
+      if (prevUnreadCountRef.current !== null && currentUnread > prevUnreadCountRef.current) {
+        playNotificationSound();
+      }
+
+      prevUnreadCountRef.current = currentUnread;
       setNotifications(response);
     } catch (error) {
       console.error('Error fetching notifications', error);
