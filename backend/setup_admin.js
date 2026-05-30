@@ -33,10 +33,12 @@ async function initializeDatabaseAndAdmin(shouldExit = true) {
         start_time TIME NOT NULL,
         end_time TIME NOT NULL,
         capacity INT NOT NULL,
+        is_blocked BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT unique_slot_time UNIQUE (modality, date, start_time)
       )
     `);
+    await db.query('ALTER TABLE slots ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE');
     console.log("Tabla 'slots' verificada.");
 
     // 4. Crear tabla bookings

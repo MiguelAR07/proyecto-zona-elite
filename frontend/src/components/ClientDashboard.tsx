@@ -204,11 +204,12 @@ export function ClientDashboard({ onLogout, user }: any) {
   const getSlotButtonProps = (slot: any | undefined) => {
     if (!slot) return { label: 'No disp.', style: 'opacity-0 pointer-events-none', clickable: false };
     const isFull = slot.bookings_count >= slot.capacity;
-    const isBlocked = slot.cross_blocked;
+    const isBlockedByAdmin = slot.is_blocked;
+    const isBlockedByRule = slot.cross_blocked;
     const spotsLeft = slot.capacity - slot.bookings_count;
 
-    if (isBlocked) return {
-      label: 'Bloqueado',
+    if (isBlockedByAdmin || isBlockedByRule) return {
+      label: isBlockedByAdmin ? 'Bloqueado por Admin' : 'Bloqueado',
       style: 'border-secondary text-muted-foreground bg-secondary/40 cursor-not-allowed',
       clickable: false,
       icon: <Lock size={12} />

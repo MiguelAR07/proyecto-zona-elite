@@ -51,21 +51,31 @@ function groupAdminSlots(slots: any[]) {
 }
 
 const getModalityLabel = (block: any) => {
+  const hasFuerza = block.fuerza && !block.fuerza.is_blocked;
+  const hasPers = block.personalizado && !block.personalizado.is_blocked;
+
   const fuerzaBookings = block.fuerza?.bookings?.length || 0;
   const personalizadoBookings = block.personalizado?.bookings?.length || 0;
 
-  // Fuerza blocks personalizado if fuerzaBookings >= 3
-  const persBlocked = fuerzaBookings >= 3;
-  // Personalizado blocks fuerza if personalizadoBookings >= 2
-  const fuerzaBlocked = personalizadoBookings >= 2;
+  // Rules:
+  // - Fuerza blocks personalizado if fuerzaBookings >= 3
+  const persBlockedByRule = fuerzaBookings >= 3;
+  // - Personalizado blocks fuerza if personalizadoBookings >= 2
+  const fuerzaBlockedByRule = personalizadoBookings >= 2;
 
-  if (fuerzaBlocked) {
-    return <span className="bg-chart-2/20 text-chart-2 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-chart-2/30">PERSONALIZADO</span>;
+  const showFuerza = hasFuerza && !fuerzaBlockedByRule;
+  const showPers = hasPers && !persBlockedByRule;
+
+  if (showFuerza && showPers) {
+    return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
   }
-  if (persBlocked) {
+  if (showFuerza) {
     return <span className="bg-primary/20 text-primary px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-primary/30">FUERZA</span>;
   }
-  return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
+  if (showPers) {
+    return <span className="bg-chart-2/20 text-chart-2 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-chart-2/30">PERSONALIZADO</span>;
+  }
+  return <span className="bg-red-500/20 text-red-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-red-500/30">BLOQUEADO</span>;
 };
 
 const playSuccessSound = () => {
@@ -144,6 +154,8 @@ export function AdminDashboard({ onLogout }: any) {
     start_time: '08:00',
     end_time: '09:00'
   });
+  const [createFuerza, setCreateFuerza] = useState(true);
+  const [createPersonalizado, setCreatePersonalizado] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -248,6 +260,17 @@ export function AdminDashboard({ onLogout }: any) {
     });
   };
 
+  const handleToggleBlockSlot = async (slotId: number) => {
+    try {
+      const response = await slotsApi.toggleBlock(slotId);
+      playSuccessSound();
+      showToast(response.message || 'Estado del horario actualizado');
+      await fetchSlots();
+    } catch (error: any) {
+      showToast(error.message || 'Error al actualizar estado del horario', 'error');
+    }
+  };
+
   const handleCreateManualSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
@@ -262,7 +285,9 @@ export function AdminDashboard({ onLogout }: any) {
       await slotsApi.create({
         date: manualSlot.date,
         start_time: startWithSeconds,
-        end_time: endWithSeconds
+        end_time: endWithSeconds,
+        create_fuerza: createFuerza,
+        create_personalizado: createPersonalizado
       });
 
       showToast('¡Horario creado con éxito!');
@@ -273,6 +298,8 @@ export function AdminDashboard({ onLogout }: any) {
         start_time: '08:00',
         end_time: '09:00'
       });
+      setCreateFuerza(true);
+      setCreatePersonalizado(true);
       await fetchSlots();
     } catch (error: any) {
       showToast(error.message || 'Error al crear horario. Asegúrate de estar conectado como admin.', 'error');
@@ -490,10 +517,29 @@ export function AdminDashboard({ onLogout }: any) {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {/* FUERZA ATHLETES */}
                               <div>
-                                <h4 className="text-xs font-bold uppercase text-primary tracking-wider mb-3 flex items-center gap-1 border-b border-border pb-1">
-                                  🏋️ Fuerza ({(block.fuerza?.bookings?.length || 0)}/{(block.fuerza?.capacity || 5)})
-                                </h4>
-                                {!block.fuerza || block.fuerza.bookings.length === 0 ? (
+                                <div className="flex justify-between items-center mb-3 border-b border-border pb-2">
+                                  <h4 className="text-xs font-bold uppercase text-primary tracking-wider flex items-center gap-1">
+                                    🏋️ Fuerza ({(block.fuerza?.bookings?.length || 0)}/{(block.fuerza?.capacity || 5)})
+                                    {block.fuerza?.is_blocked && (
+                                      <span className="ml-2 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0.5 rounded font-bold">BLOQUEADO</span>
+                                    )}
+                                  </h4>
+                                  {block.fuerza && (
+                                    <button
+                                      onClick={() => handleToggleBlockSlot(block.fuerza.id)}
+                                      className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 uppercase tracking-wider ${
+                                        block.fuerza.is_blocked
+                                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white'
+                                          : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
+                                      }`}
+                                    >
+                                      {block.fuerza.is_blocked ? '🔓 Habilitar' : '🚫 Bloquear'}
+                                    </button>
+                                  )}
+                                </div>
+                                {!block.fuerza ? (
+                                  <p className="text-xs text-muted-foreground italic">No habilitado en este bloque.</p>
+                                ) : block.fuerza.bookings.length === 0 ? (
                                   <p className="text-xs text-muted-foreground italic">No hay reservas en Fuerza.</p>
                                 ) : (
                                   <ul className="space-y-2">
@@ -522,10 +568,29 @@ export function AdminDashboard({ onLogout }: any) {
 
                               {/* PERSONALIZADO ATHLETES */}
                               <div>
-                                <h4 className="text-xs font-bold uppercase text-chart-2 tracking-wider mb-3 flex items-center gap-1 border-b border-border pb-1">
-                                  🎯 Personalizado ({(block.personalizado?.bookings?.length || 0)}/{(block.personalizado?.capacity || 2)})
-                                </h4>
-                                {!block.personalizado || block.personalizado.bookings.length === 0 ? (
+                                <div className="flex justify-between items-center mb-3 border-b border-border pb-2">
+                                  <h4 className="text-xs font-bold uppercase text-chart-2 tracking-wider flex items-center gap-1">
+                                    🎯 Personalizado ({(block.personalizado?.bookings?.length || 0)}/{(block.personalizado?.capacity || 2)})
+                                    {block.personalizado?.is_blocked && (
+                                      <span className="ml-2 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0.5 rounded font-bold">BLOQUEADO</span>
+                                    )}
+                                  </h4>
+                                  {block.personalizado && (
+                                    <button
+                                      onClick={() => handleToggleBlockSlot(block.personalizado.id)}
+                                      className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 uppercase tracking-wider ${
+                                        block.personalizado.is_blocked
+                                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white'
+                                          : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
+                                      }`}
+                                    >
+                                      {block.personalizado.is_blocked ? '🔓 Habilitar' : '🚫 Bloquear'}
+                                    </button>
+                                  )}
+                                </div>
+                                {!block.personalizado ? (
+                                  <p className="text-xs text-muted-foreground italic">No habilitado en este bloque.</p>
+                                ) : block.personalizado.bookings.length === 0 ? (
                                   <p className="text-xs text-muted-foreground italic">No hay reservas en Personalizado.</p>
                                 ) : (
                                   <ul className="space-y-2">
@@ -598,10 +663,40 @@ export function AdminDashboard({ onLogout }: any) {
               {/* Info box */}
               <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">
                 <p className="text-primary font-bold text-xs uppercase tracking-wider mb-1">Se crearán automáticamente</p>
-                <p className="font-semibold text-foreground">🏋️ Fuerza — 5 cupos &nbsp;+&nbsp; 🎯 Personalizado — 2 cupos</p>
+                <p className="font-semibold text-foreground">
+                  {createFuerza && "🏋️ Fuerza — 5 cupos"}
+                  {createFuerza && createPersonalizado && "  +  "}
+                  {createPersonalizado && "🎯 Personalizado — 2 cupos"}
+                  {!createFuerza && !createPersonalizado && "Ninguna (selecciona al menos una)"}
+                </p>
                 <p className="text-muted-foreground text-xs mt-0.5">
                   📅 {manualSlot.date || '—'} &nbsp;|&nbsp; ⏰ {formatTo12Hour(manualSlot.start_time)} → {formatTo12Hour(manualSlot.end_time)}
                 </p>
+              </div>
+
+              {/* Modalities selector */}
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">⚙️ Modalidades a Habilitar</label>
+                <div className="flex items-center gap-6 bg-secondary/20 p-3.5 rounded-xl border border-border">
+                  <label className="flex items-center gap-2.5 text-sm font-semibold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={createFuerza}
+                      onChange={e => setCreateFuerza(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary h-4.5 w-4.5 bg-background accent-primary"
+                    />
+                    🏋️ Fuerza
+                  </label>
+                  <label className="flex items-center gap-2.5 text-sm font-semibold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={createPersonalizado}
+                      onChange={e => setCreatePersonalizado(e.target.checked)}
+                      className="rounded border-border text-primary focus:ring-primary h-4.5 w-4.5 bg-background accent-primary"
+                    />
+                    🎯 Personalizado
+                  </label>
+                </div>
               </div>
 
               {/* Date */}

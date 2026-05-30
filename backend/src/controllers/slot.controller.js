@@ -12,7 +12,7 @@ const getSlots = async (req, res) => {
   try {
     // Get all slots with their booking counts
     let queryText = `
-      SELECT s.id, s.modality, s.date, s.start_time, s.end_time, s.capacity,
+      SELECT s.id, s.modality, s.date, s.start_time, s.end_time, s.capacity, s.is_blocked,
              COALESCE(COUNT(b.id), 0)::int AS bookings_count
       FROM slots s
       LEFT JOIN bookings b ON s.id = b.slot_id
@@ -83,43 +83,51 @@ const getSlots = async (req, res) => {
 
 // Create a new time block — auto-creates BOTH fuerza and personalizado slots
 const createSlot = async (req, res) => {
-  const { date, start_time, end_time } = req.body;
+  const { date, start_time, end_time, create_fuerza = true, create_personalizado = true } = req.body;
 
   if (!date || !start_time || !end_time) {
     return res.status(400).json({ error: 'Fields date, start_time, end_time are required' });
   }
 
+  if (!create_fuerza && !create_personalizado) {
+    return res.status(400).json({ error: 'Debe seleccionar al menos una modalidad para el horario.' });
+  }
+
   try {
     const created = [];
 
-    // Create fuerza slot if not exists
-    const fuerzaCheck = await db.query(
-      'SELECT id FROM slots WHERE modality = $1 AND date = $2 AND start_time = $3',
-      ['fuerza', date, start_time]
-    );
-    if (fuerzaCheck.rows.length === 0) {
-      const r = await db.query(
-        'INSERT INTO slots (modality, date, start_time, end_time, capacity) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        ['fuerza', date, start_time, end_time, 5]
+    if (create_fuerza) {
+      // Create fuerza slot if not exists
+      const fuerzaCheck = await db.query(
+        'SELECT id FROM slots WHERE modality = $1 AND date = $2 AND start_time = $3',
+        ['fuerza', date, start_time]
       );
-      created.push(r.rows[0]);
+      if (fuerzaCheck.rows.length === 0) {
+        const r = await db.query(
+          'INSERT INTO slots (modality, date, start_time, end_time, capacity) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+          ['fuerza', date, start_time, end_time, 5]
+        );
+        created.push(r.rows[0]);
+      }
     }
 
-    // Create personalizado slot if not exists
-    const persCheck = await db.query(
-      'SELECT id FROM slots WHERE modality = $1 AND date = $2 AND start_time = $3',
-      ['personalizado', date, start_time]
-    );
-    if (persCheck.rows.length === 0) {
-      const r = await db.query(
-        'INSERT INTO slots (modality, date, start_time, end_time, capacity) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        ['personalizado', date, start_time, end_time, 2]
+    if (create_personalizado) {
+      // Create personalizado slot if not exists
+      const persCheck = await db.query(
+        'SELECT id FROM slots WHERE modality = $1 AND date = $2 AND start_time = $3',
+        ['personalizado', date, start_time]
       );
-      created.push(r.rows[0]);
+      if (persCheck.rows.length === 0) {
+        const r = await db.query(
+          'INSERT INTO slots (modality, date, start_time, end_time, capacity) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+          ['personalizado', date, start_time, end_time, 2]
+        );
+        created.push(r.rows[0]);
+      }
     }
 
     if (created.length === 0) {
-      return res.status(400).json({ error: 'Ya existe un bloque de horario para esa fecha y hora.' });
+      return res.status(400).json({ error: 'Ya existe un bloque de horario para esa fecha, hora y modalidad seleccionada.' });
     }
 
     return res.status(201).json({
@@ -138,7 +146,7 @@ const getAdminSlots = async (req, res) => {
 
   try {
     let queryText = `
-      SELECT s.id, s.modality, s.date, s.start_time, s.end_time, s.capacity,
+      SELECT s.id, s.modality, s.date, s.start_time, s.end_time, s.capacity, s.is_blocked,
              COALESCE(
                json_agg(
                  json_build_object(
@@ -245,10 +253,36 @@ const createWeeklySlots = async (req, res) => {
   }
 };
 
+const toggleBlockSlot = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const checkResult = await db.query('SELECT * FROM slots WHERE id = $1', [id]);
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Slot not found' });
+    }
+
+    const currentStatus = checkResult.rows[0].is_blocked || false;
+    const updated = await db.query(
+      'UPDATE slots SET is_blocked = $1 WHERE id = $2 RETURNING *',
+      [!currentStatus, id]
+    );
+
+    return res.json({
+      message: `Modalidad ${updated.rows[0].is_blocked ? 'bloqueada' : 'desbloqueada'} con éxito`,
+      slot: updated.rows[0]
+    });
+  } catch (error) {
+    console.error('Error toggling block slot:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   getSlots,
   createSlot,
   getAdminSlots,
   deleteSlot,
-  createWeeklySlots
+  createWeeklySlots,
+  toggleBlockSlot
 };

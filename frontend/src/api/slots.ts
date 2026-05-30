@@ -13,6 +13,7 @@ export interface Slot {
   capacity: number
   bookings_count: number
   spots_left: number
+  is_blocked?: boolean
 }
 
 export const slotsApi = {
@@ -22,7 +23,7 @@ export const slotsApi = {
   getAdminSlots: (date?: string) =>
     api.get<any[]>(date ? `/slots/admin?date=${date}` : '/slots/admin'),
 
-  create: (payload: { date: string; start_time: string; end_time: string }) =>
+  create: (payload: { date: string; start_time: string; end_time: string; create_fuerza?: boolean; create_personalizado?: boolean }) =>
     api.post<{ slots: Slot[] }>('/slots', payload),
 
   createWeekly: (payload: { startDate: string; endDate: string }) =>
@@ -30,4 +31,7 @@ export const slotsApi = {
 
   delete: (id: number) =>
     api.delete<{ message: string }>(`/slots/${id}`),
+
+  toggleBlock: (id: number) =>
+    api.put<{ message: string; slot: Slot }>(`/slots/${id}/toggle-block`, {}),
 }
