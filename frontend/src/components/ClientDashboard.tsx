@@ -92,8 +92,13 @@ export function ClientDashboard({ onLogout, user }: any) {
   };
 
   useEffect(() => {
-    if (activeTab === 'reservar') fetchSlots();
-    else fetchReservations();
+    if (activeTab === 'reservar') {
+      fetchSlots();
+      const interval = setInterval(fetchSlots, 6000);
+      return () => clearInterval(interval);
+    } else {
+      fetchReservations();
+    }
   }, [activeTab, selectedDate]);
 
   const handleBook = async () => {

@@ -117,7 +117,10 @@ export function AdminDashboard({ onLogout }: any) {
   useEffect(() => {
     fetchSlots();
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(() => {
+      fetchSlots();
+      fetchNotifications();
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 
