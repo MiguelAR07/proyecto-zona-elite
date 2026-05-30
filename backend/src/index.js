@@ -52,6 +52,12 @@ app.use((err, req, res, next) => {
 });
 
 // Start listening
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
+  try {
+    await initializeDatabaseAndAdmin(false);
+    console.log('Database migrated & admin verified successfully at startup.');
+  } catch (error) {
+    console.error('Database migration failed at startup:', error);
+  }
 });
