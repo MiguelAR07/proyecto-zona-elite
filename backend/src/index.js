@@ -30,7 +30,12 @@ app.get('/api/setup', async (req, res) => {
     const message = await initializeDatabaseAndAdmin(false);
     res.json({ success: true, message });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Error in /api/setup:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || String(error),
+      stack: error.stack || null
+    });
   }
 });
 
