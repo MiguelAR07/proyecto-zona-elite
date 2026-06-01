@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Clock, ChevronUp, ChevronDown } from 'lucide-react';
 
 export function CustomTimePicker({ value, onChange, className }: { value: string, onChange: (v: string) => void, className?: string }) {
