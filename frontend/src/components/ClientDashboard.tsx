@@ -10,10 +10,11 @@ import {
   Trash2,
   Lock
 } from 'lucide-react';
-import { format, addDays, startOfToday } from 'date-fns';
+import { format, addDays, subDays, startOfToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { slotsApi } from '../api/slots';
 import { bookingsApi } from '../api/bookings';
+import { CustomDatePicker } from './CustomDatePicker';
 
 function ZonaEliteLogo() {
   return (
@@ -114,6 +115,7 @@ const formatTo12Hour = (timeStr: string) => {
 export function ClientDashboard({ onLogout, user }: any) {
   const [activeTab, setActiveTab] = useState<'reservar' | 'historial'>('reservar');
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
+  const [baseDate, setBaseDate] = useState<Date>(startOfToday());
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [slots, setSlots] = useState<any[]>([]);
@@ -132,7 +134,7 @@ export function ClientDashboard({ onLogout, user }: any) {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const dates = Array.from({ length: 7 }).map((_, i) => addDays(startOfToday(), i));
+  const dates = Array.from({ length: 7 }).map((_, i) => addDays(baseDate, i));
 
 
 
@@ -284,9 +286,22 @@ export function ClientDashboard({ onLogout, user }: any) {
 
               {/* Date selector */}
               <div className="bg-card border border-border rounded-2xl p-6">
-                <h3 className="text-base font-bold mb-4 flex items-center gap-2">
-                  <Calendar className="text-primary" size={18} /> Selecciona una fecha
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    <Calendar className="text-primary" size={18} /> Selecciona una fecha
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setBaseDate(subDays(baseDate, 7))} className="p-2 bg-secondary rounded-lg hover:bg-secondary/80 text-muted-foreground hover:text-foreground font-bold">&lt;</button>
+                    <CustomDatePicker 
+                      selectedDate={selectedDate} 
+                      onChange={(d) => {
+                        setSelectedDate(d);
+                        setBaseDate(d);
+                      }} 
+                    />
+                    <button onClick={() => setBaseDate(addDays(baseDate, 7))} className="p-2 bg-secondary rounded-lg hover:bg-secondary/80 text-muted-foreground hover:text-foreground font-bold">&gt;</button>
+                  </div>
+                </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                   {dates.map((date, i) => {
                     const isSelected = date.toDateString() === selectedDate.toDateString();

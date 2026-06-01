@@ -19,9 +19,11 @@ async function initializeDatabaseAndAdmin(shouldExit = true) {
         password_hash VARCHAR(255),
         google_id VARCHAR(255) UNIQUE,
         role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'admin')),
+        available_classes INT DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS available_classes INT DEFAULT 0');
     console.log("Tabla 'users' verificada.");
 
     // 3. Crear tabla slots

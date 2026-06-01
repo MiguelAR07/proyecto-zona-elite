@@ -6,10 +6,11 @@ const authRoutes = require('./routes/auth.routes');
 const slotRoutes = require('./routes/slot.routes');
 const bookingRoutes = require('./routes/booking.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const userRoutes = require('./routes/user.routes');
 const { initializeDatabaseAndAdmin } = require('../setup_admin');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5005;
 
 // Middleware
 app.use(cors({
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/slots', slotRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin/notifications', notificationRoutes);
+app.use('/api/users', userRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -52,8 +54,8 @@ app.use((err, req, res, next) => {
 });
 
 // Start listening
-app.listen(PORT, async () => {
-  console.log(`Server is running on port ${PORT}`);
+app.listen(PORT, '127.0.0.1', async () => {
+  console.log(`Server is running on http://127.0.0.1:${PORT}`);
   try {
     await initializeDatabaseAndAdmin(false);
     console.log('Database migrated & admin verified successfully at startup.');

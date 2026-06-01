@@ -1,20 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Users, 
-  AlertCircle, 
-  CheckCircle2, 
-  LogOut, 
-  X, 
-  Trash2,
-  CalendarPlus,
-  Bell,
-  ChevronDown
+  Users, AlertCircle, CheckCircle2, LogOut, X, Trash2, CalendarPlus, Bell, ChevronDown, Calendar, Clock, Menu
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, addDays, subDays, startOfToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { slotsApi } from '../api/slots';
 import { bookingsApi } from '../api/bookings';
 import { notificationsApi, Notification } from '../api/notifications';
+import { usersApi, User } from '../api/users';
+import { CustomDatePicker } from './CustomDatePicker';
+import { CustomTimePicker } from './CustomTimePicker';
 
 function ZonaEliteLogo() {
   return (
@@ -53,28 +48,16 @@ function groupAdminSlots(slots: any[]) {
 const getModalityLabel = (block: any) => {
   const hasFuerza = block.fuerza && !block.fuerza.is_blocked;
   const hasPers = block.personalizado && !block.personalizado.is_blocked;
-
   const fuerzaBookings = block.fuerza?.bookings?.length || 0;
   const personalizadoBookings = block.personalizado?.bookings?.length || 0;
-
-  // Rules:
-  // - Fuerza blocks personalizado if fuerzaBookings >= 3
   const persBlockedByRule = fuerzaBookings >= 3;
-  // - Personalizado blocks fuerza if personalizadoBookings >= 2
   const fuerzaBlockedByRule = personalizadoBookings >= 2;
-
   const showFuerza = hasFuerza && !fuerzaBlockedByRule;
   const showPers = hasPers && !persBlockedByRule;
 
-  if (showFuerza && showPers) {
-    return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
-  }
-  if (showFuerza) {
-    return <span className="bg-primary/20 text-primary px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-primary/30">FUERZA</span>;
-  }
-  if (showPers) {
-    return <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-emerald-500/30">PERSONALIZADO</span>;
-  }
+  if (showFuerza && showPers) return <span className="bg-purple-500/20 text-purple-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-purple-500/30">AMBAS</span>;
+  if (showFuerza) return <span className="bg-primary/20 text-primary px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-primary/30">FUERZA</span>;
+  if (showPers) return <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-emerald-500/30">PERSONALIZADO</span>;
   return <span className="bg-red-500/20 text-red-400 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border border-red-500/30">BLOQUEADO</span>;
 };
 
@@ -83,25 +66,17 @@ const playSuccessSound = () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
     oscillator.type = 'sine';
     const now = audioCtx.currentTime;
-    
-    // Ascending high chime
-    oscillator.frequency.setValueAtTime(523.25, now); // C5
-    oscillator.frequency.setValueAtTime(659.25, now + 0.1); // E5
-    
+    oscillator.frequency.setValueAtTime(523.25, now);
+    oscillator.frequency.setValueAtTime(659.25, now + 0.1);
     gainNode.gain.setValueAtTime(0.15, now);
     gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-    
     oscillator.start(now);
     oscillator.stop(now + 0.4);
-  } catch (error) {
-    console.warn('Audio playback blocked or failed:', error);
-  }
+  } catch (error) {}
 };
 
 const playCancelSound = () => {
@@ -109,25 +84,17 @@ const playCancelSound = () => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
-    
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
-    
     oscillator.type = 'sine';
     const now = audioCtx.currentTime;
-    
-    // Descending soft chime
-    oscillator.frequency.setValueAtTime(440.00, now); // A4
-    oscillator.frequency.setValueAtTime(349.23, now + 0.1); // F4
-    
+    oscillator.frequency.setValueAtTime(440.00, now);
+    oscillator.frequency.setValueAtTime(349.23, now + 0.1);
     gainNode.gain.setValueAtTime(0.15, now);
     gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-    
     oscillator.start(now);
     oscillator.stop(now + 0.4);
-  } catch (error) {
-    console.warn('Audio playback blocked or failed:', error);
-  }
+  } catch (error) {}
 };
 
 const formatTo12Hour = (timeStr: string) => {
@@ -143,25 +110,25 @@ const formatTo12Hour = (timeStr: string) => {
 };
 
 export function AdminDashboard({ onLogout }: any) {
+  const [activeTab, setActiveTab] = useState<'calendario' | 'horarios' | 'usuarios'>('calendario');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
+  const [baseDate, setBaseDate] = useState<Date>(startOfToday());
+
   const [slots, setSlots] = useState<any[]>([]);
+  const [calendarSlots, setCalendarSlots] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  
   const [showNotifications, setShowNotifications] = useState(false);
   const [expandedBlockKey, setExpandedBlockKey] = useState<string | null>(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [manualSlot, setManualSlot] = useState({
-    date: new Date().toISOString().split('T')[0],
-    start_time: '08:00',
-    end_time: '09:00'
-  });
+  const [manualSlot, setManualSlot] = useState({ date: new Date().toISOString().split('T')[0], start_time: '08:00', end_time: '09:00' });
   const [createFuerza, setCreateFuerza] = useState(true);
   const [createPersonalizado, setCreatePersonalizado] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void; } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -170,38 +137,38 @@ export function AdminDashboard({ onLogout }: any) {
 
   const notifRef = useRef<HTMLDivElement>(null);
   const prevUnreadCountRef = useRef<number | null>(null);
-
-
+  const dates = Array.from({ length: 7 }).map((_, i) => addDays(baseDate, i));
 
   const fetchSlots = async () => {
     try {
       const response = await slotsApi.getAdminSlots();
       setSlots(response);
-    } catch (error) {
-      console.error('Error fetching admin slots', error);
-    }
+    } catch (error) {}
   };
 
   const fetchNotifications = async () => {
     try {
       const response = await notificationsApi.getAll();
       const currentUnread = response.filter(n => !n.read).length;
-
-      // Play cancel sound if a new cancelation notification arrived
-      if (prevUnreadCountRef.current !== null && currentUnread > prevUnreadCountRef.current) {
-        playCancelSound();
-      }
-
+      if (prevUnreadCountRef.current !== null && currentUnread > prevUnreadCountRef.current) playCancelSound();
       prevUnreadCountRef.current = currentUnread;
       setNotifications(response);
+    } catch (error) {}
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const data = await usersApi.getAll();
+      setUsersList(data);
     } catch (error) {
-      console.error('Error fetching notifications', error);
+      console.error(error);
     }
   };
 
   useEffect(() => {
     fetchSlots();
     fetchNotifications();
+    fetchUsers();
     const interval = setInterval(() => {
       fetchSlots();
       fetchNotifications();
@@ -209,23 +176,24 @@ export function AdminDashboard({ onLogout }: any) {
     return () => clearInterval(interval);
   }, []);
 
-  // Close notifications on outside click
+  useEffect(() => {
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const filtered = slots.filter(s => s.date.startsWith(dateStr));
+    setCalendarSlots(filtered);
+  }, [selectedDate, slots]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setShowNotifications(false);
-      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
     };
-    if (showNotifications) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    if (showNotifications) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showNotifications]);
 
   const handleDeleteSlot = (fuerzaId?: number, personalizadoId?: number) => {
     setConfirmModal({
       title: '¿Eliminar horario?',
-      message: '¿Estás seguro de que deseas eliminar este bloque de horario? Se cancelarán todas las reservas de ambas modalidades.',
+      message: '¿Estás seguro de que deseas eliminar este bloque de horario? Se cancelarán todas las reservas.',
       onConfirm: async () => {
         setConfirmModal(null);
         try {
@@ -235,12 +203,11 @@ export function AdminDashboard({ onLogout }: any) {
           showToast('¡Horario eliminado con éxito!');
           await fetchSlots();
         } catch (error: any) {
-          showToast(error.message || 'Error al eliminar horario', 'error');
+          showToast(error.message || 'Error al eliminar', 'error');
         }
       }
     });
   };
-
 
   const handleCancelBooking = (bookingId: number) => {
     setConfirmModal({
@@ -254,34 +221,20 @@ export function AdminDashboard({ onLogout }: any) {
           showToast('¡Reserva cancelada con éxito!');
           await fetchSlots();
         } catch (error: any) {
-          showToast(error.message || 'Error al cancelar reserva', 'error');
+          showToast(error.message || 'Error al cancelar', 'error');
         }
       }
     });
   };
 
-  const handleToggleBlockSlot = async (slotId: number) => {
-    try {
-      const response = await slotsApi.toggleBlock(slotId);
-      playSuccessSound();
-      showToast(response.message || 'Estado del horario actualizado');
-      await fetchSlots();
-    } catch (error: any) {
-      showToast(error.message || 'Error al actualizar estado del horario', 'error');
-    }
-  };
+
 
   const handleCreateManualSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
     try {
-      const startWithSeconds = manualSlot.start_time.length === 5
-        ? `${manualSlot.start_time}:00`
-        : manualSlot.start_time;
-      const endWithSeconds = manualSlot.end_time.length === 5
-        ? `${manualSlot.end_time}:00`
-        : manualSlot.end_time;
-
+      const startWithSeconds = manualSlot.start_time.length === 5 ? `${manualSlot.start_time}:00` : manualSlot.start_time;
+      const endWithSeconds = manualSlot.end_time.length === 5 ? `${manualSlot.end_time}:00` : manualSlot.end_time;
       await slotsApi.create({
         date: manualSlot.date,
         start_time: startWithSeconds,
@@ -289,32 +242,24 @@ export function AdminDashboard({ onLogout }: any) {
         create_fuerza: createFuerza,
         create_personalizado: createPersonalizado
       });
-
       showToast('¡Horario creado con éxito!');
       playSuccessSound();
       setShowManualModal(false);
-      setManualSlot({
-        date: new Date().toISOString().split('T')[0],
-        start_time: '08:00',
-        end_time: '09:00'
-      });
-      setCreateFuerza(true);
-      setCreatePersonalizado(true);
       await fetchSlots();
     } catch (error: any) {
-      showToast(error.message || 'Error al crear horario. Asegúrate de estar conectado como admin.', 'error');
+      showToast(error.message || 'Error al crear horario', 'error');
     } finally {
       setIsCreating(false);
     }
   };
 
-
-  const handleMarkAsRead = async (id: number) => {
+  const handleUpdateClasses = async (id: string, newCount: number) => {
     try {
-      await notificationsApi.markAsRead(id);
-      await fetchNotifications();
-    } catch (error) {
-      console.error(error);
+      await usersApi.updateClasses(id, newCount);
+      showToast('Clases actualizadas');
+      setUsersList(usersList.map(u => u.id === id ? { ...u, available_classes: newCount } : u));
+    } catch (error: any) {
+      showToast(error.message || 'Error', 'error');
     }
   };
 
@@ -331,438 +276,326 @@ export function AdminDashboard({ onLogout }: any) {
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const groupedBlocks = groupAdminSlots(slots);
+  const calendarBlocks = groupAdminSlots(calendarSlots);
 
   return (
-
-    <div className="min-h-screen bg-background flex flex-col text-foreground">
-
-      {/* HEADER */}
-      <header className="h-20 bg-card border-b border-border flex items-center justify-between px-6 lg:px-12 sticky top-0 z-30">
-        <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-background flex overflow-hidden text-foreground">
+      {sidebarOpen && <div className="fixed inset-0 bg-black/80 z-40 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />}
+      
+      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-card border-r border-border flex flex-col transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+        <div className="p-6 h-24 flex items-center justify-between border-b border-border shrink-0">
           <ZonaEliteLogo />
-          <span className="bg-primary text-primary-foreground px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider hidden sm:block">Admin Panel</span>
+          <button className="lg:hidden text-muted-foreground" onClick={() => setSidebarOpen(false)}><X size={24} /></button>
         </div>
-        <div className="flex items-center gap-4">
-
-          {/* Bell button */}
-          <div ref={notifRef} className="relative">
-            <button
-              className="relative p-2 text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setShowNotifications(v => !v)}
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-card"></span>
-              )}
-            </button>
-
-            {/* Notifications dropdown — scoped inside its own relative wrapper */}
-            {showNotifications && (
-              <div className="absolute top-12 right-0 w-80 bg-card border border-border shadow-2xl rounded-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="p-3 bg-secondary/50 border-b border-border text-sm font-bold uppercase tracking-wider flex justify-between items-center">
-                  Notificaciones
-                  <button onClick={() => setShowNotifications(false)}><X size={16} /></button>
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <p className="p-4 text-sm text-muted-foreground text-center">No hay notificaciones.</p>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {notifications.map(n => (
-                        <li key={n.id} className={`p-3 text-sm ${!n.read ? 'bg-primary/5 font-semibold' : 'text-muted-foreground'}`}>
-                          <p>{n.message}</p>
-                          <div className="flex justify-between items-center mt-1 text-xs">
-                            <span className="opacity-50">{format(new Date(n.created_at), 'hh:mm a - dd/MM/yy')}</span>
-                            {!n.read && (
-                              <button onClick={() => handleMarkAsRead(n.id)} className="text-primary hover:underline">Marcar leída</button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <button onClick={onLogout} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors ml-2 border-l border-border pl-4">
-            <LogOut size={16} /> Salir
+        <nav className="flex-1 p-4 space-y-2">
+          <button onClick={() => { setActiveTab('calendario'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'calendario' ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <Calendar size={20} /> Calendario
+          </button>
+          <button onClick={() => { setActiveTab('horarios'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'horarios' ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <Clock size={20} /> Gestión Horarios
+          </button>
+          <button onClick={() => { setActiveTab('usuarios'); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'usuarios' ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}>
+            <Users size={20} /> Usuarios
+          </button>
+        </nav>
+        <div className="p-4 border-t border-border">
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors font-medium">
+            <LogOut size={20} /> Cerrar Sesión
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* MAIN */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 lg:p-12 space-y-8">
-        <div className="space-y-8">
-
-          {/* Title + Add button */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-heading font-bold uppercase">Gestión de Horarios</h1>
-              <p className="text-muted-foreground mt-1">Administra los bloques de entrenamiento</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowManualModal(true)}
-              className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
-            >
-              <CalendarPlus size={20} />
-              Añadir Horario
+      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+        <header className="h-24 bg-card border-b border-border flex items-center justify-between px-6 lg:px-8 shrink-0">
+          <div className="flex items-center gap-4">
+            <button className="lg:hidden p-2 rounded-lg hover:bg-secondary" onClick={() => setSidebarOpen(true)}>
+              <Menu size={24} />
             </button>
+            <h2 className="text-2xl font-bold tracking-wider font-heading uppercase">
+              {activeTab === 'calendario' ? 'Calendario de Reservas' : activeTab === 'horarios' ? 'Gestión de Horarios' : 'Usuarios Registrados'}
+            </h2>
           </div>
-
-          {/* KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6">
-              <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary"><Users size={24} /></div>
-              <div><p className="text-3xl font-heading font-bold">{totalReservations}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Total Reservas</p></div>
-            </div>
-            <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6">
-              <div className="w-14 h-14 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500"><AlertCircle size={24} /></div>
-              <div><p className="text-3xl font-heading font-bold">{fullSlots}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Horarios Llenos</p></div>
-            </div>
-            <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6">
-              <div className="w-14 h-14 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-500"><CheckCircle2 size={24} /></div>
-              <div><p className="text-3xl font-heading font-bold">{availableSlots}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Horarios Libres</p></div>
+          <div className="flex items-center gap-4">
+            <div ref={notifRef} className="relative">
+              <button className="relative p-2 text-muted-foreground hover:text-foreground transition-colors" onClick={() => setShowNotifications(v => !v)}>
+                <Bell size={20} />
+                {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-card"></span>}
+              </button>
+              {showNotifications && (
+                <div className="absolute top-12 right-0 w-80 bg-card border border-border shadow-2xl rounded-xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="p-3 bg-secondary/50 border-b border-border text-sm font-bold uppercase tracking-wider flex justify-between items-center">
+                    Notificaciones
+                    <button onClick={() => setShowNotifications(false)}><X size={16} /></button>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.length === 0 ? <p className="p-4 text-sm text-muted-foreground text-center">No hay notificaciones.</p> : (
+                      <ul className="divide-y divide-border">
+                        {notifications.map(n => (
+                          <li key={n.id} className={`p-3 text-sm ${!n.read ? 'bg-primary/5 font-semibold' : 'text-muted-foreground'}`}>
+                            <p>{n.message}</p>
+                            <div className="flex justify-between items-center mt-1 text-xs">
+                              <span className="opacity-50">{format(new Date(n.created_at), 'hh:mm a - dd/MM/yy')}</span>
+                              {!n.read && <button onClick={() => notificationsApi.markAsRead(n.id).then(fetchNotifications)} className="text-primary hover:underline">Marcar leída</button>}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+        </header>
 
-          {/* Table */}
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-secondary/30">
-                  <th className="p-4">Fecha</th>
-                  <th className="p-4">Hora</th>
-                  <th className="p-4">Modalidad</th>
-                  <th className="p-4">Ocupación</th>
-                  <th className="p-4 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {groupedBlocks.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-10 text-center text-muted-foreground">
-                      No hay horarios aún. Haz clic en <strong>"Añadir Horario"</strong>.
-                    </td>
-                  </tr>
-                )}
-                 {groupedBlocks.map((block: any) => {
-                  const dateStr = block.date.includes('T') ? block.date.split('T')[0] : block.date;
-                  const blockKey = `${dateStr}_${block.start_time}`;
-                  const isExpanded = expandedBlockKey === blockKey;
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8">
 
-                  const hasFuerza = block.fuerza && !block.fuerza.is_blocked;
-                  const hasPers = block.personalizado && !block.personalizado.is_blocked;
-                  let borderLeftClass = 'border-l-4 border-l-purple-500'; // AMBAS
-                  if (!hasFuerza && !hasPers) {
-                    borderLeftClass = 'border-l-4 border-l-red-500/80'; // BLOQUEADO
-                  } else if (hasFuerza && !hasPers) {
-                    borderLeftClass = 'border-l-4 border-l-primary'; // FUERZA
-                  } else if (!hasFuerza && hasPers) {
-                    borderLeftClass = 'border-l-4 border-l-emerald-500'; // PERSONALIZADO
-                  }
+          {/* TAB CALENDARIO */}
+          {activeTab === 'calendario' && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div className="bg-card border border-border rounded-2xl p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <h3 className="text-base font-bold flex items-center gap-2"><Calendar className="text-primary" size={18} /> Selecciona una fecha</h3>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setBaseDate(subDays(baseDate, 7))} className="p-2 bg-secondary rounded-lg hover:bg-secondary/80 text-muted-foreground hover:text-foreground font-bold">&lt;</button>
+                    <CustomDatePicker 
+                      selectedDate={selectedDate} 
+                      onChange={(d) => {
+                        setSelectedDate(d);
+                        setBaseDate(d);
+                      }} 
+                    />
+                    <button onClick={() => setBaseDate(addDays(baseDate, 7))} className="p-2 bg-secondary rounded-lg hover:bg-secondary/80 text-muted-foreground hover:text-foreground font-bold">&gt;</button>
+                  </div>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  {dates.map((date, i) => {
+                    const isSelected = date.toDateString() === selectedDate.toDateString();
+                    return (
+                      <button key={i} onClick={() => setSelectedDate(date)} className={`shrink-0 flex flex-col items-center justify-center w-20 h-20 rounded-2xl border-2 transition-all ${isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:border-primary/50 text-foreground'}`}>
+                        <span className="text-xs uppercase font-semibold mb-1">{format(date, 'eee', { locale: es })}</span>
+                        <span className="text-2xl font-heading font-bold">{format(date, 'd')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                  return (
-                    <React.Fragment key={blockKey}>
-                      <tr className={`hover:bg-secondary/20 transition-colors border-b border-border ${borderLeftClass}`}>
-                        <td className="p-4 font-semibold">{format(new Date(block.date), 'dd MMM yyyy', { locale: es })}</td>
-                        <td className="p-4 font-heading font-bold text-lg">{formatTo12Hour(block.start_time)}</td>
-                        <td className="p-4">
-                          {getModalityLabel(block)}
-                        </td>
-                        <td className="p-4">
-                          <div className="flex flex-col gap-2 max-w-[200px]">
-                            {block.fuerza && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground w-12 font-medium">Fuerza:</span>
-                                <span className={`text-xs font-bold w-8 ${block.fuerza.bookings.length >= block.fuerza.capacity ? 'text-red-500' : 'text-foreground'}`}>
-                                  {block.fuerza.bookings.length}/{block.fuerza.capacity}
-                                </span>
-                                <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden max-w-[80px]">
-                                  <div
-                                    className="h-full bg-primary"
-                                    style={{ width: `${Math.min((block.fuerza.bookings.length / block.fuerza.capacity) * 100, 100)}%` }}
-                                  />
-                                </div>
+              <div className="bg-card border border-border rounded-2xl p-6">
+                <h3 className="text-base font-bold mb-2 flex items-center gap-2"><Clock className="text-primary" size={18} /> Horarios y Atletas del día</h3>
+                {calendarBlocks.length === 0 ? <p className="text-muted-foreground text-sm text-center py-8">No hay horarios programados para este día.</p> : (
+                  <div className="space-y-4">
+                    {calendarBlocks.map((block: any) => {
+                      const blockKey = `${block.date}_${block.start_time}`;
+                      const isExpanded = expandedBlockKey === blockKey;
+                      const hasFuerza = block.fuerza;
+                      const hasPers = block.personalizado;
+
+                      return (
+                        <div key={blockKey} className="border border-border rounded-xl overflow-hidden bg-background">
+                          <div className="bg-secondary/30 px-4 py-3 flex items-center justify-between cursor-pointer" onClick={() => setExpandedBlockKey(isExpanded ? null : blockKey)}>
+                            <div className="flex items-center gap-4">
+                              <span className="font-heading font-bold text-xl">{formatTo12Hour(block.start_time)}</span>
+                              <div className="flex gap-2">
+                                {hasFuerza && <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-xs font-bold uppercase">Fuerza: {block.fuerza.bookings.length}/{block.fuerza.capacity}</span>}
+                                {hasPers && <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded text-xs font-bold uppercase">Pers: {block.personalizado.bookings.length}/{block.personalizado.capacity}</span>}
                               </div>
-                            )}
-                            {block.personalizado && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground w-12 font-medium">Pers:</span>
-                                <span className={`text-xs font-bold w-8 ${block.personalizado.bookings.length >= block.personalizado.capacity ? 'text-red-500' : 'text-foreground'}`}>
-                                  {block.personalizado.bookings.length}/{block.personalizado.capacity}
-                                </span>
-                                <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden max-w-[80px]">
-                                  <div
-                                    className="h-full bg-emerald-500"
-                                    style={{ width: `${Math.min((block.personalizado.bookings.length / block.personalizado.capacity) * 100, 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
+                            </div>
+                            <ChevronDown className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                           </div>
-                        </td>
-                        <td className="p-4">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => setExpandedBlockKey(isExpanded ? null : blockKey)}
-                              className="p-2 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 text-xs font-bold uppercase"
-                            >
-                              Atletas <ChevronDown size={14} className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSlot(block.fuerza?.id, block.personalizado?.id)}
-                              className="p-2 hover:bg-red-500/20 rounded-lg text-red-500 hover:text-red-600 transition-colors"
-                              title="Eliminar Horario"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="bg-secondary/10">
-                          <td colSpan={5} className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              {/* FUERZA ATHLETES */}
+                          
+                          {isExpanded && (
+                            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-border">
+                              {/* Fuerza List */}
                               <div>
-                                <div className="flex justify-between items-center mb-3 border-b border-border pb-2">
-                                  <h4 className="text-xs font-bold uppercase text-primary tracking-wider flex items-center gap-1">
-                                    🏋️ Fuerza ({(block.fuerza?.bookings?.length || 0)}/{(block.fuerza?.capacity || 5)})
-                                    {block.fuerza?.is_blocked && (
-                                      <span className="ml-2 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0.5 rounded font-bold">BLOQUEADO</span>
-                                    )}
-                                  </h4>
-                                  {block.fuerza && (
-                                    <button
-                                      onClick={() => handleToggleBlockSlot(block.fuerza.id)}
-                                      className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 uppercase tracking-wider ${
-                                        block.fuerza.is_blocked
-                                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white'
-                                          : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
-                                      }`}
-                                    >
-                                      {block.fuerza.is_blocked ? '🔓 Habilitar' : '🚫 Bloquear'}
-                                    </button>
-                                  )}
-                                </div>
-                                {!block.fuerza ? (
-                                  <p className="text-xs text-muted-foreground italic">No habilitado en este bloque.</p>
-                                ) : block.fuerza.bookings.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground italic">No hay reservas en Fuerza.</p>
-                                ) : (
+                                <h4 className="text-xs font-bold uppercase text-primary mb-3">🏋️ Fuerza</h4>
+                                {!hasFuerza ? <p className="text-xs text-muted-foreground italic">No disponible</p> : block.fuerza.bookings.length === 0 ? <p className="text-xs text-muted-foreground italic">Nadie ha reservado</p> : (
                                   <ul className="space-y-2">
                                     {block.fuerza.bookings.map((b: any) => (
                                       <li key={b.booking_id} className="flex justify-between items-center bg-card border border-border p-3 rounded-lg">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center font-bold text-xs">
-                                            {b.user_name?.charAt(0) || '?'}
-                                          </div>
-                                          <div>
-                                            <p className="text-sm font-bold">{b.user_name}</p>
-                                            <p className="text-xs text-muted-foreground">{b.user_email}</p>
-                                          </div>
-                                        </div>
-                                        <button
-                                          onClick={() => handleCancelBooking(b.booking_id)}
-                                          className="text-xs border border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg transition"
-                                        >
-                                          Cancelar
-                                        </button>
+                                        <div className="text-sm font-bold">{b.user_name}</div>
+                                        <button onClick={() => handleCancelBooking(b.booking_id)} className="text-xs text-red-500 hover:underline">Cancelar</button>
                                       </li>
                                     ))}
                                   </ul>
                                 )}
                               </div>
-
-                              {/* PERSONALIZADO ATHLETES */}
+                              {/* Personalizado List */}
                               <div>
-                                <div className="flex justify-between items-center mb-3 border-b border-border pb-2">
-                                  <h4 className="text-xs font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1">
-                                    🎯 Personalizado ({(block.personalizado?.bookings?.length || 0)}/{(block.personalizado?.capacity || 2)})
-                                    {block.personalizado?.is_blocked && (
-                                      <span className="ml-2 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0.5 rounded font-bold">BLOQUEADO</span>
-                                    )}
-                                  </h4>
-                                  {block.personalizado && (
-                                    <button
-                                      onClick={() => handleToggleBlockSlot(block.personalizado.id)}
-                                      className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 uppercase tracking-wider ${
-                                        block.personalizado.is_blocked
-                                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-white'
-                                          : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
-                                      }`}
-                                    >
-                                      {block.personalizado.is_blocked ? '🔓 Habilitar' : '🚫 Bloquear'}
-                                    </button>
-                                  )}
-                                </div>
-                                {!block.personalizado ? (
-                                  <p className="text-xs text-muted-foreground italic">No habilitado en este bloque.</p>
-                                ) : block.personalizado.bookings.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground italic">No hay reservas en Personalizado.</p>
-                                ) : (
+                                <h4 className="text-xs font-bold uppercase text-emerald-400 mb-3">🎯 Personalizado</h4>
+                                {!hasPers ? <p className="text-xs text-muted-foreground italic">No disponible</p> : block.personalizado.bookings.length === 0 ? <p className="text-xs text-muted-foreground italic">Nadie ha reservado</p> : (
                                   <ul className="space-y-2">
                                     {block.personalizado.bookings.map((b: any) => (
                                       <li key={b.booking_id} className="flex justify-between items-center bg-card border border-border p-3 rounded-lg">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center font-bold text-xs">
-                                            {b.user_name?.charAt(0) || '?'}
-                                          </div>
-                                          <div>
-                                            <p className="text-sm font-bold">{b.user_name}</p>
-                                            <p className="text-xs text-muted-foreground">{b.user_email}</p>
-                                          </div>
-                                        </div>
-                                        <button
-                                          onClick={() => handleCancelBooking(b.booking_id)}
-                                          className="text-xs border border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded-lg transition"
-                                        >
-                                          Cancelar
-                                        </button>
+                                        <div className="text-sm font-bold">{b.user_name}</div>
+                                        <button onClick={() => handleCancelBooking(b.booking_id)} className="text-xs text-red-500 hover:underline">Cancelar</button>
                                       </li>
                                     ))}
                                   </ul>
                                 )}
                               </div>
                             </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB HORARIOS */}
+          {activeTab === 'horarios' && (
+            <div className="max-w-6xl mx-auto space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-heading font-bold uppercase">Gestión de Bloques</h3>
+                <button onClick={() => setShowManualModal(true)} className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+                  <CalendarPlus size={18} /> Añadir Horario
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6"><div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary"><Users size={24} /></div><div><p className="text-3xl font-heading font-bold">{totalReservations}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Total Reservas</p></div></div>
+                <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6"><div className="w-14 h-14 rounded-xl bg-red-500/20 flex items-center justify-center text-red-500"><AlertCircle size={24} /></div><div><p className="text-3xl font-heading font-bold">{fullSlots}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Llenos</p></div></div>
+                <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6"><div className="w-14 h-14 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-500"><CheckCircle2 size={24} /></div><div><p className="text-3xl font-heading font-bold">{availableSlots}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Libres</p></div></div>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-secondary/30">
+                      <th className="p-4">Fecha</th><th className="p-4">Hora</th><th className="p-4">Modalidad</th><th className="p-4 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {groupedBlocks.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-muted-foreground">No hay horarios aún.</td></tr>}
+                    {groupedBlocks.map((block: any) => {
+                      const blockKey = `${block.date}_${block.start_time}`;
+                      return (
+                        <tr key={blockKey} className="hover:bg-secondary/20 transition-colors border-b border-border">
+                          <td className="p-4 font-semibold">{format(new Date(block.date), 'dd MMM yyyy', { locale: es })}</td>
+                          <td className="p-4 font-heading font-bold text-lg">{formatTo12Hour(block.start_time)}</td>
+                          <td className="p-4">{getModalityLabel(block)}</td>
+                          <td className="p-4 text-right">
+                            <button onClick={() => handleDeleteSlot(block.fuerza?.id, block.personalizado?.id)} className="p-2 hover:bg-red-500/20 rounded-lg text-red-500 hover:text-red-600 transition-colors" title="Eliminar Horario">
+                              <Trash2 size={16} />
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB USUARIOS */}
+          {activeTab === 'usuarios' && (
+            <div className="max-w-6xl mx-auto space-y-6">
+              <h3 className="text-xl font-heading font-bold uppercase mb-4">Usuarios ({usersList.length})</h3>
+              <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-secondary/30">
+                      <th className="p-4">Nombre</th>
+                      <th className="p-4">Email</th>
+                      <th className="p-4">Rol</th>
+                      <th className="p-4">Clases Disp.</th>
+                      <th className="p-4">Registrado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {usersList.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-muted-foreground">Cargando...</td></tr>}
+                    {usersList.map((u: User) => (
+                      <tr key={u.id} className="hover:bg-secondary/20 transition-colors">
+                        <td className="p-4 font-bold">{u.name}</td>
+                        <td className="p-4 text-muted-foreground text-sm">{u.email}</td>
+                        <td className="p-4">
+                          <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${u.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'}`}>{u.role}</span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="number" 
+                              className="w-16 bg-background border border-border rounded p-1 text-center font-bold"
+                              defaultValue={u.available_classes || 0}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val) && val !== u.available_classes) handleUpdateClasses(u.id, val);
+                              }}
+                            />
+                          </div>
+                        </td>
+                        <td className="p-4 text-sm text-muted-foreground">{format(new Date(u.created_at), 'dd/MM/yyyy')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
         </div>
       </main>
 
-      {/* MODAL: Añadir Horario */}
+      {/* MODAL HORARIO */}
       {showManualModal && (
-        <div
-          className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowManualModal(false); }}
-        >
+        <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setShowManualModal(false); }}>
           <div className="bg-card border border-border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
-
-            {/* Modal Header */}
             <div className="p-5 border-b border-border flex justify-between items-center bg-secondary/30">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                  <CalendarPlus size={18} />
-                </div>
-                <div>
-                  <h3 className="font-heading font-bold uppercase text-base">Añadir Horario</h3>
-                  <p className="text-xs text-muted-foreground">Nuevo bloque de entrenamiento</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowManualModal(false)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary"
-              >
-                <X size={20} />
-              </button>
+              <h3 className="font-heading font-bold uppercase text-base">Añadir Horario</h3>
+              <button type="button" onClick={() => setShowManualModal(false)} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary"><X size={20} /></button>
             </div>
-
-            {/* Modal Form */}
             <form onSubmit={handleCreateManualSlot} className="p-5 space-y-4">
-
-              {/* Info box */}
-              <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-sm">
-                <p className="text-primary font-bold text-xs uppercase tracking-wider mb-1">Se crearán automáticamente</p>
-                <p className="font-semibold text-foreground">
-                  {createFuerza && "🏋️ Fuerza — 5 cupos"}
-                  {createFuerza && createPersonalizado && "  +  "}
-                  {createPersonalizado && "🎯 Personalizado — 2 cupos"}
-                  {!createFuerza && !createPersonalizado && "Ninguna (selecciona al menos una)"}
-                </p>
-                <p className="text-muted-foreground text-xs mt-0.5">
-                  📅 {manualSlot.date || '—'} &nbsp;|&nbsp; ⏰ {formatTo12Hour(manualSlot.start_time)} → {formatTo12Hour(manualSlot.end_time)}
-                </p>
-              </div>
-
-              {/* Modalities selector */}
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">⚙️ Modalidades a Habilitar</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Modalidades</label>
                 <div className="flex items-center gap-6 bg-secondary/20 p-3.5 rounded-xl border border-border">
                   <label className="flex items-center gap-2.5 text-sm font-semibold cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={createFuerza}
-                      onChange={e => setCreateFuerza(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-primary h-4.5 w-4.5 bg-background accent-primary"
-                    />
-                    🏋️ Fuerza
+                    <input type="checkbox" checked={createFuerza} onChange={e => setCreateFuerza(e.target.checked)} className="rounded border-border text-primary focus:ring-primary h-4 w-4 bg-background accent-primary" /> Fuerza
                   </label>
                   <label className="flex items-center gap-2.5 text-sm font-semibold cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={createPersonalizado}
-                      onChange={e => setCreatePersonalizado(e.target.checked)}
-                      className="rounded border-border text-primary focus:ring-primary h-4.5 w-4.5 bg-background accent-primary"
-                    />
-                    🎯 Personalizado
+                    <input type="checkbox" checked={createPersonalizado} onChange={e => setCreatePersonalizado(e.target.checked)} className="rounded border-border text-primary focus:ring-primary h-4 w-4 bg-background accent-primary" /> Personalizado
                   </label>
                 </div>
               </div>
-
-              {/* Date */}
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">📅 Fecha</label>
-                <input
-                  required
-                  type="date"
-                  value={manualSlot.date}
-                  onChange={e => setManualSlot(s => ({ ...s, date: e.target.value }))}
-                  className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground outline-none focus:border-primary transition-colors"
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">Fecha</label>
+                <CustomDatePicker 
+                  selectedDate={new Date(manualSlot.date + 'T00:00:00')} 
+                  onChange={d => setManualSlot(s => ({ ...s, date: format(d, 'yyyy-MM-dd') }))} 
+                  className="w-full justify-between px-4 py-3 bg-background"
                 />
               </div>
-
-              {/* Times */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">⏰ Inicio</label>
-                  <input
-                    required
-                    type="time"
-                    value={manualSlot.start_time}
-                    onChange={e => setManualSlot(s => ({ ...s, start_time: e.target.value }))}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground outline-none focus:border-primary transition-colors"
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">Inicio</label>
+                  <CustomTimePicker 
+                    value={manualSlot.start_time} 
+                    onChange={t => setManualSlot(s => ({ ...s, start_time: t }))} 
+                    className="w-full justify-center bg-background"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">⏰ Fin</label>
-                  <input
-                    required
-                    type="time"
-                    value={manualSlot.end_time}
-                    onChange={e => setManualSlot(s => ({ ...s, end_time: e.target.value }))}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground outline-none focus:border-primary transition-colors"
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">Fin</label>
+                  <CustomTimePicker 
+                    value={manualSlot.end_time} 
+                    onChange={t => setManualSlot(s => ({ ...s, end_time: t }))} 
+                    className="w-full justify-center bg-background"
                   />
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={isCreating}
-                className="w-full bg-primary text-primary-foreground font-heading font-bold tracking-wider py-3.5 rounded-xl hover:bg-primary/90 transition-colors uppercase text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isCreating ? 'Guardando...' : '✓ Crear Horario'}
+              <button type="submit" disabled={isCreating} className="w-full bg-primary text-primary-foreground font-heading font-bold tracking-wider py-3.5 rounded-xl hover:bg-primary/90 transition-colors uppercase text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                {isCreating ? 'Guardando...' : 'Crear'}
               </button>
             </form>
           </div>
         </div>
       )}
+
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-4 rounded-xl border shadow-2xl animate-in fade-in slide-in-from-bottom-5 duration-300 ${
-          toast.type === 'success' 
-            ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400 font-semibold' 
-            : 'bg-red-500/15 border-red-500/30 text-red-400 font-semibold'
-        }`}>
+        <div className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-4 rounded-xl border shadow-2xl animate-in fade-in slide-in-from-bottom-5 duration-300 ${toast.type === 'success' ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400 font-semibold' : 'bg-red-500/15 border-red-500/30 text-red-400 font-semibold'}`}>
           <span>{toast.message}</span>
         </div>
       )}
@@ -770,28 +603,12 @@ export function AdminDashboard({ onLogout }: any) {
       {confirmModal && (
         <div className="fixed inset-0 bg-black/70 z-[250] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-border bg-secondary/30">
-              <h3 className="font-heading font-bold uppercase text-foreground">{confirmModal.title}</h3>
-            </div>
+            <div className="p-5 border-b border-border bg-secondary/30"><h3 className="font-heading font-bold uppercase text-foreground">{confirmModal.title}</h3></div>
             <div className="p-5">
               <p className="text-sm text-muted-foreground mb-6">{confirmModal.message}</p>
               <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConfirmModal(null)}
-                  className="flex-1 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition text-sm font-semibold"
-                >
-                  No, volver
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    confirmModal.onConfirm();
-                  }}
-                  className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition text-sm shadow-lg shadow-red-500/20"
-                >
-                  Sí, continuar
-                </button>
+                <button type="button" onClick={() => setConfirmModal(null)} className="flex-1 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition text-sm font-semibold">Cancelar</button>
+                <button type="button" onClick={() => confirmModal.onConfirm()} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition text-sm shadow-lg shadow-red-500/20">Confirmar</button>
               </div>
             </div>
           </div>
