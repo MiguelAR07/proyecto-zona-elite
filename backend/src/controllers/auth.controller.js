@@ -9,7 +9,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Generate JWT Token helper
 const generateToken = (user) => {
   return jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone, cedula: user.cedula },
     process.env.JWT_SECRET || 'super_secret_jwt_key_change_me',
     { expiresIn: '7d' }
   );
@@ -37,7 +37,7 @@ const register = async (req, res) => {
     // Insert user (default role is client unless specified)
     const userRole = role === 'admin' ? 'admin' : 'client';
     const result = await db.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
+      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role, phone, cedula',
       [name, email, passwordHash, userRole]
     );
 
@@ -84,7 +84,9 @@ const login = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        phone: user.phone,
+        cedula: user.cedula
       }
     });
   } catch (error) {
@@ -118,14 +120,14 @@ const googleLogin = async (req, res) => {
     if (!user) {
       // Create user if not registered
       const insertResult = await db.query(
-        'INSERT INTO users (name, email, google_id, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
+        'INSERT INTO users (name, email, google_id, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role, phone, cedula',
         [name, email, googleId, 'client'] // Default Google users are clients
       );
       user = insertResult.rows[0];
     } else if (!user.google_id) {
       // If user registered with email first, link Google ID
       const updateResult = await db.query(
-        'UPDATE users SET google_id = $1 WHERE id = $2 RETURNING id, name, email, role',
+        'UPDATE users SET google_id = $1 WHERE id = $2 RETURNING id, name, email, role, phone, cedula',
         [googleId, user.id]
       );
       user = updateResult.rows[0];
@@ -139,7 +141,9 @@ const googleLogin = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        phone: user.phone,
+        cedula: user.cedula
       }
     });
   } catch (error) {
@@ -148,8 +152,41 @@ const googleLogin = async (req, res) => {
   }
 };
 
+// Update Profile (Phone, Cedula, Name)
+const updateProfile = async (req, res) => {
+  const userId = req.user.id;
+  const { name, phone, cedula } = req.body;
+
+  try {
+    const result = await db.query(
+      'UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), cedula = COALESCE($3, cedula) WHERE id = $4 RETURNING id, name, email, role, phone, cedula',
+      [name, phone, cedula, userId]
+    );
+    
+    const user = result.rows[0];
+    const token = generateToken(user);
+    
+    return res.json({
+      message: 'Profile updated successfully',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        cedula: user.cedula
+      }
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   register,
   login,
-  googleLogin
+  googleLogin,
+  updateProfile
 };

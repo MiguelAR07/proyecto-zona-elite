@@ -26,4 +26,10 @@ export const bookingsApi = {
 
   getAll: () =>
     api.get<Booking[]>('/bookings/all'),
+
+  getByToken: (token: string) =>
+    api.get<any>(`/bookings/token/${token}`),
+
+  cancelByToken: (token: string) =>
+    api.post<{ message: string }>('/bookings/cancel-token', { token }),
 }

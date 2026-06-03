@@ -6,4 +6,6 @@ export interface UserSession {
   name: string
   email: string
   role: string
+  phone?: string
+  cedula?: string
 }

@@ -5,9 +5,19 @@ import { AuthView }      from '@/components/AuthView'
 import { AdminDashboard } from '@/components/AdminDashboard'
 import { ClientDashboard } from '@/components/ClientDashboard'
 import { useSession }    from '@/hooks/useSession'
+import { CancelBookingView } from '@/components/CancelBookingView'
 
 export default function App() {
   const { user, view, setView, login, logout, checking } = useSession()
+
+  // Intercept /cancelar route
+  const url = new URL(window.location.href);
+  if (url.pathname === '/cancelar') {
+    const token = url.searchParams.get('token');
+    if (token) {
+      return <CancelBookingView token={token} />;
+    }
+  }
 
   if (checking) {
     return (
@@ -39,6 +49,7 @@ export default function App() {
         <ClientDashboard
           onLogout={logout}
           user={user}
+          onLogin={login}
         />
       )}
     </>

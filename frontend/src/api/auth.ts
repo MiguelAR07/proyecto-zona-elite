@@ -19,4 +19,7 @@ export const authApi = {
 
   googleLogin: (idToken: string) =>
     api.post<AuthResponse>('/auth/google-login', { idToken }),
+
+  updateProfile: (name: string, phone: string, cedula: string) =>
+    api.put<AuthResponse>('/auth/profile', { name, phone, cedula }),
 }

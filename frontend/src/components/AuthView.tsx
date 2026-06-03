@@ -1,14 +1,13 @@
 // src/components/AuthView.tsx
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Lock, Mail, User, ArrowLeft } from 'lucide-react'
 import { ZonaEliteLogo } from '@/components/Logo'
 import { authApi } from '@/api/auth'
 import type { ViewState } from '@/types'
 
-// Google GSI global
-declare global {
-  interface Window { google?: any }
-}
+import { GoogleLogin } from '@react-oauth/google'
+
+// Remove global google interface since we use @react-oauth/google
 
 type AuthMode = 'login' | 'register' | 'recover'
 
@@ -19,49 +18,21 @@ interface Props {
 
 export function AuthView({ onNavigate, onLogin }: Props) {
   const [mode, setMode] = useState<AuthMode>('login')
-  const [name, setName] = useState('')
+  // `name` unused since we removed manual registration
+  // const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  /* ── Google GSI ── */
-  useEffect(() => {
-    if (mode !== 'login') return
-
-    const init = () => {
-      if (!window.google) return
-      window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '',
-        callback: handleGoogleResponse,
-      })
-      const btn = document.getElementById('google-btn')
-      if (btn) {
-        window.google.accounts.id.renderButton(btn, {
-          theme: 'outline', size: 'large', text: 'signin_with', width: 380,
-        })
-      }
+  async function handleGoogleSuccess(credentialResponse: any) {
+    if (credentialResponse.credential) {
+      await submit(() => authApi.googleLogin(credentialResponse.credential))
     }
+  }
 
-    if (window.google) { init(); return }
-
-    let script = document.querySelector<HTMLScriptElement>(
-      'script[src="https://accounts.google.com/gsi/client"]'
-    )
-    if (!script) {
-      script = document.createElement('script')
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      document.body.appendChild(script)
-    }
-    script.addEventListener('load', init)
-    return () => script!.removeEventListener('load', init)
-  }, [mode])
-
-  /* ── Handlers ── */
-  async function handleGoogleResponse(response: any) {
-    await submit(() => authApi.googleLogin(response.credential))
+  function handleGoogleError() {
+    setError('Error al conectar con Google')
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -69,10 +40,7 @@ export function AuthView({ onNavigate, onLogin }: Props) {
     await submit(() => authApi.login(email, password))
   }
 
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault()
-    await submit(() => authApi.register(name, email, password))
-  }
+
 
   async function submit(fn: () => Promise<{ token: string; user: any }>) {
     setLoading(true)
@@ -152,7 +120,16 @@ export function AuthView({ onNavigate, onLogin }: Props) {
                   <span className="text-xs text-muted-foreground uppercase tracking-wider">o continuar con</span>
                   <div className="flex-1 border-t border-border" />
                 </div>
-                <div className="flex justify-center" id="google-btn" />
+                <div className="flex justify-center mt-4">
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    theme="outline"
+                    size="large"
+                    text="signin_with"
+                    width="380px"
+                  />
+                </div>
               </div>
 
               <p className="text-center text-sm text-muted-foreground">
@@ -171,14 +148,20 @@ export function AuthView({ onNavigate, onLogin }: Props) {
                 <h1 className="text-3xl font-heading font-bold">Crear Cuenta</h1>
                 <p className="text-muted-foreground text-sm mt-1">Únete y reserva tus horarios.</p>
               </div>
-              <form className="space-y-4" onSubmit={handleRegister}>
-                <Field label="Nombre Completo" type="text" value={name} onChange={setName} placeholder="Ej. Mateo Silva" />
-                <Field label="Correo" type="email" value={email} onChange={setEmail} placeholder="atleta@ejemplo.com" />
-                <Field label="Contraseña" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-                <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 mt-2">
-                  {loading ? 'Creando cuenta…' : 'Crear Cuenta'}
-                </button>
-              </form>
+                <p className="text-muted-foreground text-sm mt-1 mb-6 text-center bg-secondary/30 p-3 rounded-lg border border-border">
+                  Para garantizar la seguridad y validación de los correos, el registro se realiza exclusivamente a través de Google.
+                </p>
+              
+              <div className="flex justify-center mt-4 py-8 bg-secondary/20 rounded-xl border border-border">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="filled_blue"
+                  size="large"
+                  text="signup_with"
+                  width="300px"
+                />
+              </div>
               <p className="text-center text-sm text-muted-foreground">
                 ¿Ya tienes cuenta?{' '}
                 <button onClick={() => setMode('login')} className="text-foreground font-semibold hover:text-primary transition-colors">

@@ -124,7 +124,7 @@ export function AdminDashboard({ onLogout }: any) {
   const [expandedBlockKey, setExpandedBlockKey] = useState<string | null>(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [manualSlot, setManualSlot] = useState({ date: new Date().toISOString().split('T')[0], start_time: '08:00', end_time: '09:00' });
+  const [manualSlot, setManualSlot] = useState({ date: format(new Date(), 'yyyy-MM-dd'), start_time: '08:00', end_time: '09:00' });
   const [createFuerza, setCreateFuerza] = useState(true);
   const [createPersonalizado, setCreatePersonalizado] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -177,7 +177,7 @@ export function AdminDashboard({ onLogout }: any) {
   }, []);
 
   useEffect(() => {
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
     const filtered = slots.filter(s => s.date.startsWith(dateStr));
     setCalendarSlots(filtered);
   }, [selectedDate, slots]);
@@ -253,11 +253,11 @@ export function AdminDashboard({ onLogout }: any) {
     }
   };
 
-  const handleUpdateClasses = async (id: string, newCount: number) => {
+  const handleUpdateUserAdmin = async (id: string, data: { available_classes?: number, plan_type?: string }) => {
     try {
-      await usersApi.updateClasses(id, newCount);
-      showToast('Clases actualizadas');
-      setUsersList(usersList.map(u => u.id === id ? { ...u, available_classes: newCount } : u));
+      await usersApi.updateClasses(id, data);
+      showToast('Datos de usuario actualizados');
+      setUsersList(usersList.map(u => u.id === id ? { ...u, ...data } : u));
     } catch (error: any) {
       showToast(error.message || 'Error', 'error');
     }
@@ -461,32 +461,55 @@ export function AdminDashboard({ onLogout }: any) {
                 <div className="bg-card border border-border p-6 rounded-2xl flex items-center gap-6"><div className="w-14 h-14 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-500"><CheckCircle2 size={24} /></div><div><p className="text-3xl font-heading font-bold">{availableSlots}</p><p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Libres</p></div></div>
               </div>
 
-              <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-secondary/30">
-                      <th className="p-4">Fecha</th><th className="p-4">Hora</th><th className="p-4">Modalidad</th><th className="p-4 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {groupedBlocks.length === 0 && <tr><td colSpan={4} className="p-10 text-center text-muted-foreground">No hay horarios aún.</td></tr>}
-                    {groupedBlocks.map((block: any) => {
-                      const blockKey = `${block.date}_${block.start_time}`;
-                      return (
-                        <tr key={blockKey} className="hover:bg-secondary/20 transition-colors border-b border-border">
-                          <td className="p-4 font-semibold">{format(new Date(block.date), 'dd MMM yyyy', { locale: es })}</td>
-                          <td className="p-4 font-heading font-bold text-lg">{formatTo12Hour(block.start_time)}</td>
-                          <td className="p-4">{getModalityLabel(block)}</td>
-                          <td className="p-4 text-right">
-                            <button onClick={() => handleDeleteSlot(block.fuerza?.id, block.personalizado?.id)} className="p-2 hover:bg-red-500/20 rounded-lg text-red-500 hover:text-red-600 transition-colors" title="Eliminar Horario">
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="space-y-8">
+                {groupedBlocks.length === 0 ? (
+                  <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
+                    No hay horarios aún.
+                  </div>
+                ) : (
+                  Array.from(new Set(groupedBlocks.map((b: any) => b.date))).map((date: any) => {
+                    const blocks = groupedBlocks.filter((b: any) => b.date === date);
+                    return (
+                      <div key={date} className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary shrink-0">
+                            <Calendar size={24} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold uppercase text-foreground text-lg">
+                              {format(new Date(date.includes('T') ? date.split('T')[0] + 'T00:00:00' : date + 'T00:00:00'), 'EEEE, d', { locale: es })} de {format(new Date(date.includes('T') ? date.split('T')[0] + 'T00:00:00' : date + 'T00:00:00'), 'MMMM yyyy', { locale: es })}
+                            </h4>
+                            <p className="text-sm text-muted-foreground font-medium">{blocks.length} {blocks.length === 1 ? 'horario programado' : 'horarios programados'}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {blocks.map((block: any) => {
+                            const blockKey = `${block.date}_${block.start_time}`;
+                            return (
+                              <div key={blockKey} className="bg-card border border-border rounded-xl p-5 flex flex-col hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                  <div>
+                                    <span className="font-heading font-bold text-2xl tracking-tight block">{formatTo12Hour(block.start_time)}</span>
+                                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider block mt-1">
+                                      Fin: {formatTo12Hour(block.end_time)}
+                                    </span>
+                                  </div>
+                                  <button onClick={() => handleDeleteSlot(block.fuerza?.id, block.personalizado?.id)} className="text-red-500 bg-red-500/10 hover:bg-red-500 hover:text-white p-2 rounded-lg transition-all" title="Eliminar Horario">
+                                    <Trash2 size={18} />
+                                  </button>
+                                </div>
+                                <div className="mt-auto pt-4 border-t border-border flex items-center justify-between">
+                                  {getModalityLabel(block)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
@@ -501,7 +524,9 @@ export function AdminDashboard({ onLogout }: any) {
                     <tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold bg-secondary/30">
                       <th className="p-4">Nombre</th>
                       <th className="p-4">Email</th>
-                      <th className="p-4">Rol</th>
+                      <th className="p-4">Teléfono</th>
+                      <th className="p-4">Cédula</th>
+                      <th className="p-4">Plan</th>
                       <th className="p-4">Clases Disp.</th>
                       <th className="p-4">Registrado</th>
                     </tr>
@@ -512,8 +537,25 @@ export function AdminDashboard({ onLogout }: any) {
                       <tr key={u.id} className="hover:bg-secondary/20 transition-colors">
                         <td className="p-4 font-bold">{u.name}</td>
                         <td className="p-4 text-muted-foreground text-sm">{u.email}</td>
+                        <td className="p-4 text-muted-foreground text-sm">{u.phone || '-'}</td>
+                        <td className="p-4 text-muted-foreground text-sm">{u.cedula || '-'}</td>
                         <td className="p-4">
-                          <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${u.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-emerald-500/20 text-emerald-400'}`}>{u.role}</span>
+                          <select 
+                            className="bg-background border border-border rounded p-1 text-sm text-foreground font-semibold focus:outline-none focus:border-primary"
+                            value={u.plan_type || 'Sin Plan'}
+                            onChange={(e) => {
+                              if (e.target.value !== u.plan_type) {
+                                handleUpdateUserAdmin(u.id, { plan_type: e.target.value });
+                              }
+                            }}
+                          >
+                            <option value="Sin Plan">Sin Plan</option>
+                            <option value="Clase Suelta">Clase Suelta</option>
+                            <option value="Plan 12 Clases">Plan 12 Clases</option>
+                            <option value="Mensualidad Fuerza">Mensualidad Fuerza</option>
+                            <option value="Mensualidad Ilimitada">Mensualidad Ilimitada</option>
+                            <option value="Personalizado">Personalizado</option>
+                          </select>
                         </td>
                         <td className="p-4">
                           <div className="flex items-center gap-2">
@@ -523,7 +565,7 @@ export function AdminDashboard({ onLogout }: any) {
                               defaultValue={u.available_classes || 0}
                               onBlur={(e) => {
                                 const val = parseInt(e.target.value);
-                                if (!isNaN(val) && val !== u.available_classes) handleUpdateClasses(u.id, val);
+                                if (!isNaN(val) && val !== u.available_classes) handleUpdateUserAdmin(u.id, { available_classes: val });
                               }}
                             />
                           </div>

@@ -14,6 +14,7 @@ import { format, addDays, subDays, startOfToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { slotsApi } from '../api/slots';
 import { bookingsApi } from '../api/bookings';
+import { authApi } from '../api/auth';
 import { CustomDatePicker } from './CustomDatePicker';
 
 function ZonaEliteLogo() {
@@ -112,7 +113,7 @@ const formatTo12Hour = (timeStr: string) => {
   return `${hourFormatted}:${minutes} ${ampm}`;
 };
 
-export function ClientDashboard({ onLogout, user }: any) {
+export function ClientDashboard({ onLogout, user, onLogin }: any) {
   const [activeTab, setActiveTab] = useState<'reservar' | 'historial'>('reservar');
   const [selectedDate, setSelectedDate] = useState<Date>(startOfToday());
   const [baseDate, setBaseDate] = useState<Date>(startOfToday());
@@ -121,6 +122,7 @@ export function ClientDashboard({ onLogout, user }: any) {
   const [slots, setSlots] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [bookingModal, setBookingModal] = useState<{ slot: any; label: string } | null>(null);
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '', cedula: '' });
   const [isBooking, setIsBooking] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
@@ -134,13 +136,19 @@ export function ClientDashboard({ onLogout, user }: any) {
     setTimeout(() => setToast(null), 3000);
   };
 
+  useEffect(() => {
+    if (user) {
+      setProfileForm({ name: user.name || '', phone: user.phone || '', cedula: user.cedula || '' });
+    }
+  }, [user]);
+
   const dates = Array.from({ length: 7 }).map((_, i) => addDays(baseDate, i));
 
 
 
   const fetchSlots = async () => {
     try {
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const res = await slotsApi.getAll(dateStr);
       setSlots(res);
     } catch (error) {
@@ -171,6 +179,16 @@ export function ClientDashboard({ onLogout, user }: any) {
     if (!bookingModal) return;
     setIsBooking(true);
     try {
+      if (!user.phone || !user.cedula) {
+        if (!profileForm.name || !profileForm.phone || !profileForm.cedula) {
+          showToast('Por favor, completa todos los campos requeridos', 'error');
+          setIsBooking(false);
+          return;
+        }
+        const res = await authApi.updateProfile(profileForm.name, profileForm.phone, profileForm.cedula);
+        if (onLogin) onLogin(res.token, res.user);
+      }
+      
       await bookingsApi.create(bookingModal.slot.id);
       playSuccessSound();
       showToast('¡Reserva confirmada!');
@@ -456,7 +474,7 @@ export function ClientDashboard({ onLogout, user }: any) {
           className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setBookingModal(null); }}
         >
-          <div className="bg-card border border-border rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-border bg-secondary/30">
               <h3 className="font-heading font-bold uppercase">Confirmar Reserva</h3>
             </div>
@@ -468,7 +486,46 @@ export function ClientDashboard({ onLogout, user }: any) {
                 a las{' '}
                 <strong className="text-foreground">{formatTo12Hour(bookingModal.slot.start_time)}</strong>.
               </p>
-              <div className="flex gap-3">
+              
+              {(!user.phone || !user.cedula) && (
+                <div className="mb-6 space-y-4 bg-secondary/20 p-4 rounded-xl border border-border">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">
+                    Completa tu perfil para continuar
+                  </p>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Nombre Completo</label>
+                    <input
+                      type="text"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                      placeholder="Tu nombre"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Teléfono (WhatsApp)</label>
+                    <input
+                      type="tel"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                      value={profileForm.phone}
+                      onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                      placeholder="Ej: 3001234567"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Cédula</label>
+                    <input
+                      type="text"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                      value={profileForm.cedula}
+                      onChange={(e) => setProfileForm({ ...profileForm, cedula: e.target.value })}
+                      placeholder="Tu número de documento"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => setBookingModal(null)}
                   className="flex-1 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition text-sm font-semibold"
@@ -480,7 +537,7 @@ export function ClientDashboard({ onLogout, user }: any) {
                   disabled={isBooking}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 transition text-sm disabled:opacity-60"
                 >
-                  {isBooking ? 'Reservando...' : '✓ Confirmar'}
+                  {isBooking ? 'Procesando...' : (!user.phone || !user.cedula ? 'Guardar y Reservar' : '✓ Confirmar')}
                 </button>
               </div>
             </div>

@@ -18,12 +18,18 @@ async function initializeDatabaseAndAdmin(shouldExit = true) {
         email VARCHAR(100) UNIQUE NOT NULL,
         password_hash VARCHAR(255),
         google_id VARCHAR(255) UNIQUE,
+        phone VARCHAR(20),
+        cedula VARCHAR(50),
         role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'admin')),
         available_classes INT DEFAULT 0,
+        plan_type VARCHAR(100) DEFAULT 'Sin Plan',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
     await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS available_classes INT DEFAULT 0');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS cedula VARCHAR(50)');
+    await db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type VARCHAR(100) DEFAULT \'Sin Plan\'');
     console.log("Tabla 'users' verificada.");
 
     // 3. Crear tabla slots
@@ -48,9 +54,10 @@ async function initializeDatabaseAndAdmin(shouldExit = true) {
       CREATE TABLE IF NOT EXISTS bookings (
         id SERIAL PRIMARY KEY,
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        slot_id INT REFERENCES slots(id) ON DELETE CASCADE,
+        slot_id INTEGER REFERENCES slots(id) ON DELETE CASCADE,
         evaluation JSONB DEFAULT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        cancel_token VARCHAR(255),
         CONSTRAINT unique_user_booking UNIQUE (user_id, slot_id)
       )
     `);
@@ -76,21 +83,21 @@ async function initializeDatabaseAndAdmin(shouldExit = true) {
 
     // 7. Insertar/Actualizar Administrador
     const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash('admin123', salt);
+    const hash = await bcrypt.hash('Zonaelite2026.', salt);
 
-    const adminCheck = await db.query("SELECT id FROM users WHERE email = 'admin@zonaelite.com'");
+    const adminCheck = await db.query("SELECT id FROM users WHERE email = 'zonaelite8@gmail.com'");
     if (adminCheck.rows.length === 0) {
       await db.query(
         "INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4)",
-        ['Administrador', 'admin@zonaelite.com', hash, 'admin']
+        ['Administrador', 'zonaelite8@gmail.com', hash, 'admin']
       );
-      console.log("✅ Usuario administrador creado: admin@zonaelite.com / admin123");
+      console.log("✅ Usuario administrador creado: zonaelite8@gmail.com / Zonaelite2026.");
     } else {
       await db.query(
-        "UPDATE users SET password_hash = $1 WHERE email = 'admin@zonaelite.com'",
+        "UPDATE users SET password_hash = $1 WHERE email = 'zonaelite8@gmail.com'",
         [hash]
       );
-      console.log("✅ Contraseña de administrador actualizada a 'admin123'");
+      console.log("✅ Contraseña de administrador actualizada a 'Zonaelite2026.'");
     }
 
     // 8. Seed de slots por defecto si la tabla está vacía
